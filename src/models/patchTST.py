@@ -14,6 +14,89 @@ from ..models.layers.pos_encoding import *
 from ..models.layers.basics import *
 from ..models.layers.attention import *
 
+class FeatureFusion(nn.Module):
+    def __init__(self, feature_dim1, feature_dim2, hidden_dim, fusion_dim):
+        super(FeatureFusion, self).__init__()
+        self.fc1 = nn.Linear(feature_dim1, hidden_dim)  # 全连接层1，用于特征1
+        self.fc2 = nn.Linear(feature_dim2, hidden_dim)  # 全连接层2，用于特征2
+        self.fusion = nn.Linear(hidden_dim * 2, fusion_dim)  # 全连接层3，用于融合两个特征
+
+    def forward(self, feature1, feature2):
+        # 对每个特征进行线性变换
+        out1 = self.fc1(feature1)
+        out2 = self.fc2(feature2)
+        
+        # 将两个特征向量拼接
+        fused_features = torch.cat((out1, out2), dim=-1)
+
+        # 使用融合层
+        fused_out = self.fusion(fused_features)
+
+        return fused_out
+
+
+class UNet(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(UNet, self).__init__()
+
+        self.kernel_size = 3
+        self.padding = self.kernel_size // 2
+
+        def conv_block(in_channels, out_channels):
+            return nn.Sequential(
+                nn.Conv1d(in_channels, out_channels, self.kernel_size, padding=self.padding),
+                nn.ReLU(inplace=True),
+                nn.Conv1d(out_channels, out_channels, self.kernel_size, padding=self.padding),
+                nn.ReLU(inplace=True)
+            )   
+
+        self.encoder1 = conv_block(in_channels, 64)
+        self.pool1 = nn.MaxPool1d(2, 2)
+        self.encoder2 = conv_block(64, 128)
+        self.pool2 = nn.MaxPool1d(2, 2)
+        self.encoder3 = conv_block(128, 256)
+        self.pool3 = nn.MaxPool1d(2, 2)
+        self.encoder4 = conv_block(256, 512)
+        self.pool4 = nn.MaxPool1d(2, 2)
+
+        self.bottleneck = conv_block(512, 1024)
+
+        self.upconv4 = nn.ConvTranspose1d(1024, 512, 2, stride=2)
+        self.decoder4 = conv_block(1024, 512)
+        self.upconv3 = nn.ConvTranspose1d(512, 256, 2, stride=2)
+        self.decoder3 = conv_block(512, 256)
+        self.upconv2 = nn.ConvTranspose1d(256, 128, 2, stride=2)
+        self.decoder2 = conv_block(256, 128)
+        self.upconv1 = nn.ConvTranspose1d(128, 64, 2, stride=2)
+        self.decoder1 = conv_block(128, 64)
+
+        self.output = nn.Conv1d(64, out_channels, 1)
+
+
+    def forward(self, x):
+        enc1 = self.encoder1(x)
+        enc2 = self.encoder2(self.pool1(enc1))
+        enc3 = self.encoder3(self.pool2(enc2))
+        enc4 = self.encoder4(self.pool3(enc3))
+
+        bottleneck = self.bottleneck(self.pool4(enc4))
+
+        dec4 = self.upconv4(bottleneck)
+        dec4 = torch.cat((dec4, enc4), dim=1)
+        dec4 = self.decoder4(dec4)
+        dec3 = self.upconv3(dec4)
+        dec3 = torch.cat((dec3, enc3), dim=1)
+        dec3 = self.decoder3(dec3)
+        dec2 = self.upconv2(dec3)
+        dec2 = torch.cat((dec2, enc2), dim=1)
+        dec2 = self.decoder2(dec2)
+        dec1 = self.upconv1(dec2)
+        dec1 = torch.cat((dec1, enc1), dim=1)
+        dec1 = self.decoder1(dec1)
+
+        out = self.output(dec1)
+
+        return out
             
 # Cell
 class PatchTST(nn.Module):
@@ -202,7 +285,8 @@ class PatchTSTEncoder(nn.Module):
         self.encoder = TSTEncoder(d_model, n_heads, d_ff=d_ff, norm=norm, attn_dropout=attn_dropout, dropout=dropout,
                                    pre_norm=pre_norm, activation=act, res_attention=res_attention, n_layers=n_layers, 
                                     store_attn=store_attn)
-
+        #self.unet = UNet(c_in, c_in)
+        #self.fusion = FeatureFusion(d_model, d_model, d_model*2, d_model)
     def forward(self, x) -> Tensor:          
         """
         x: tensor [bs x num_patch x nvars x patch_len]
@@ -218,7 +302,10 @@ class PatchTSTEncoder(nn.Module):
         else:
             x = self.W_P(x)                                                      # x: [bs x num_patch x nvars x d_model]
 
-        x = x.transpose(1,2)                                                     # x: [bs x nvars x num_patch x d_model]        
+        x = x.transpose(1,2)                                                     # x: [bs x nvars x num_patch x d_model]    
+
+        # unet_x = self.unet(x.reshape(bs, n_vars, num_patch*self.d_model))
+        # unet_x = unet_x.reshape(bs, n_vars, num_patch, self.d_model)
 
         u = torch.reshape(x, (bs*n_vars, num_patch, self.d_model) )              # u: [bs * nvars x num_patch x d_model]
         u = self.dropout(u + self.W_pos)                                         # u: [bs * nvars x num_patch x d_model]
@@ -226,6 +313,9 @@ class PatchTSTEncoder(nn.Module):
         # Encoder
         z = self.encoder(u)                                                      # z: [bs * nvars x num_patch x d_model]
         z = torch.reshape(z, (-1,n_vars, num_patch, self.d_model))               # z: [bs x nvars x num_patch x d_model]
+
+        # z = self.fusion(z, x)
+
         z = z.permute(0,1,3,2)                                                   # z: [bs x nvars x d_model x num_patch]
 
         return z

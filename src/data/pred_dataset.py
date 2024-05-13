@@ -658,7 +658,7 @@ class ConcatStockDataset(ConcatDataset):
                  features='M', data_path='*.csv',
                  target='OT', scale=True, timeenc=1, freq='h',
                  time_col_name='date', use_time_features=False, 
-                 train_split=0.7, test_split=0.2) -> None:
+                 train_split=0.9, test_split=0) -> None:
         # load files from root_path use pathlib
         files = list(Path(root_path).glob(data_path))
         datasets = []

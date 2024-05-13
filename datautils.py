@@ -9,7 +9,8 @@ import sys
 from src.data.datamodule import DataLoaders
 from src.data.pred_dataset import *
 
-DSETS = ['stock', 'weather', 'stock_pretrain', 'stock_finetune','stock_predict'
+DSETS = ['stock', 'weather', 'stock_pretrain', 'stock_finetune','stock_predict', 'stock_pretrain_align_day',
+         'stock_finetune_align_day'
         ]
 
 def get_dls(params):
@@ -21,7 +22,23 @@ def get_dls(params):
 
   
     if params.dset == 'stock_pretrain':
-        root_path = '/home/userroot/dev/zms/etl/index_300'
+        root_path = '/home/userroot/dev/zms/etl/index_300_align_hour'
+        size = [params.context_points, 0, params.target_points]
+        dls = DataLoaders(
+                datasetCls=ConcatStockDataset,
+                dataset_kwargs={
+                'root_path': root_path,
+                'data_path': '*.csv',
+                'features': params.features,
+                'scale': True,
+                'size': size,
+                'use_time_features': params.use_time_features
+                },
+                batch_size=params.batch_size,
+                workers=params.num_workers,
+                )
+    elif params.dset == 'stock_pretrain_align_day':
+        root_path = '/home/userroot/dev/zms/etl/index_300_align_day'
         size = [params.context_points, 0, params.target_points]
         dls = DataLoaders(
                 datasetCls=ConcatStockDataset,
@@ -38,6 +55,22 @@ def get_dls(params):
                 )
     elif params.dset == 'stock_finetune':
         root_path = '/home/userroot/dev/zms/etl/index_300_finetune'
+        size = [params.context_points, 0, params.target_points]
+        dls = DataLoaders(
+                datasetCls=ConcatStockDataset,
+                dataset_kwargs={
+                'root_path': root_path,
+                'data_path': '*.csv',
+                'features': params.features,
+                'scale': True,
+                'size': size,
+                'use_time_features': params.use_time_features
+                },
+                batch_size=params.batch_size,
+                workers=params.num_workers,
+                )
+    elif params.dset == 'stock_finetune_align_day':
+        root_path = '/home/userroot/dev/zms/etl/index_300_align_day_finetune'
         size = [params.context_points, 0, params.target_points]
         dls = DataLoaders(
                 datasetCls=ConcatStockDataset,

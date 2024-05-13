@@ -28,16 +28,23 @@ from transformers import AutoModel
 from numpy.linalg import norm
 
 model = AutoModel.from_pretrained('/data/models/jina_emb/', trust_remote_code=True) 
-# model.to('cuda:2')
+model.to('cuda:2')
 
 user_prompt = "总结下面的文本，给我列出一份带有金融财经相关的主要见解和最重要事实的要点清单。字数小于250字，不要太多。"
 system_prompt = "你是一名专业的投研分析人员，你的任务是整理出投研分析所需要的内容,先总结，然后发布评论，如果无法总结，请回答不知道。评论内容在总结内容之后，以【评论】开头。全部内容不要超过150字,不允许分段。"
-
+resume_i_idx = 29187 + 9853
 with open('index_300_keynotes.jsonl','w',encoding='utf-8') as f:
     for i , line in df_news.iterrows():
-        if line['content'] == '':
+        if i < resume_i_idx:
             continue
-        news = line['content'][0:4000]
+        print(f'正在处理第{i}行')
+        try:
+            if line['content'] == '':
+                continue
+            news = line['content'][0:4000]
+        except TypeError as e:
+            print(f"An error occurred: {e}")
+            continue
         messages = [
                     
 
